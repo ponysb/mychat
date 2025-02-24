@@ -1,0 +1,44 @@
+{
+    "PonyRobot":{
+        "user_id":"5646825156",
+        "username":"PonyRobot",
+
+        "robot_id":"*******",
+        "nickname":"PonyRobot",
+        "avatar":"https://cdn.jsdelivr.net/gh/PonyCui/PonyCui.github.io/img/avatar/robot.png",
+        "desc":"I'm a robot, I can help you with your daily work.",
+        "status":1,
+        "message_type":["text","md","custom"],
+        "rooms":["666666","ROOM_rbEQUoaQm7"],
+        "create_time":"2021-01-01 00:00:00",
+        "update_time":"2021-01-01 00:00:00"
+    },
+    "publicPlugIn":{
+        "user_id":"pony",
+        "username":"pony",
+
+        "robot_id":"*******",
+        "nickname":"PonyRobot",
+        "avatar":"https://cdn.jsdelivr.net/gh/PonyCui/PonyCui.github.io/img/avatar/robot.png",
+        "desc":"I'm a robot, I can help you with your daily work.",
+        "status":1,
+        "message_type":["text"],
+        "rooms":["666666"],
+        "create_time":"2021-01-01 00:00:00",
+        "update_time":"2021-01-01 00:00:00"
+    },
+    "tianrandai":{
+        "user_id":"tianrandai",
+        "username":"tianrandai",
+
+        "robot_id":"*******",
+        "nickname":"天然呆",
+        "avatar":"https://cdn.jsdelivr.net/gh/PonyCui/PonyCui.github.io/img/avatar/robot.png",
+        "desc":"I'm a robot, I can help you with your daily work.",
+        "status":1,
+        "message_type":["text","custom","md"],
+        "rooms":["666666"],
+        "create_time":"2021-01-01 00:00:00",
+        "update_time":"2021-01-01 00:00:00"
+    }
+}
