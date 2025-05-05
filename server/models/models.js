@@ -742,6 +742,44 @@ const Badge = sequelize.define('Badge', {
 });
 
 
+// 应用标签表
+const AppTag = sequelize.define('AppTag', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    tag_name: {  // 标签名称    
+        type: DataTypes.STRING(255),
+        allowNull: false
+    },
+    tag_color: {  // 标签颜色
+        type: DataTypes.STRING(255),
+        allowNull: false
+    },
+    app_num: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
+    tag_icon: {  // 标签图标
+        type: DataTypes.STRING(255),
+        allowNull: false
+    },
+    status: {  // 状态 1-正常 2-禁用 3-删除
+        type: DataTypes.INTEGER,
+        allowNull: false
+    },
+    other: {  // 冗余字段
+        type: DataTypes.JSONB,
+        allowNull: true,
+    },
+}, {
+    schema: process.env.MODE_NAME,
+    tableName: 'app_tags'
+});
+
+
 const initializeDatabase = async () => {
     try {
         console.log('正在同步数据库...');
@@ -752,6 +790,7 @@ const initializeDatabase = async () => {
         throw error;  // 如果出错，抛出异常阻止服务器启动
     }
 };
+
 
 
 module.exports = {
@@ -768,5 +807,6 @@ module.exports = {
     DataStatistics,
     SignIn,
     Badge,
+    AppTag,
     initializeDatabase
 };

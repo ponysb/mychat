@@ -7,17 +7,18 @@ const koaJwt = require('koa-jwt');
 const fs = require('fs');
 const path = require('path');
 const { User, chatOrder } = require('../models/models');
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 const nanoidNode = '1234567890abcdefghijklmnopqrstuvwxyz';
 const router = new Router();
 // 价格设置
 var price_vip = 68;
 var price_vip_pro = 88;
+var ai = 19
 
 // 下单签名计算
 function sign_md5(data) {
     const order_template = {
-        mch_id: "*******",  //商户号必填
+        mch_id: "xxxxxxxxxxxxxx",  //商户号必填
         out_trade_no: data.out_trade_no,  //订单号必填
         total_fee: data.total_fee,  //支付金额必填
         body: data.product,  //商品描述必填
@@ -25,14 +26,14 @@ function sign_md5(data) {
         notify_url: "http://topay.zyy.muo.cc:3049/notify",  //通知单地址必填
         attach: "无",    //附加数据
         time_expire: "5m",  //订单失效时间
-        developer_appid: "*******",  //应用id
+        developer_appid: "xxxxxxxxxxxxx",  //应用id
     }
       
     // 签名计算
     const stringA = `body=${order_template.body}&mch_id=${order_template.mch_id}&notify_url=${order_template.notify_url}&out_trade_no=${order_template.out_trade_no}&timestamp=${order_template.timestamp}&total_fee=${order_template.total_fee}`
       
       
-    const stringSignTemp = stringA + "&key=a85e54ec46618452475e7e60b5870d81";
+    const stringSignTemp = stringA + "&key=xxxxxxxxxx";
     
     const signMd5 = cryptoMD5(stringSignTemp).toString().toUpperCase();  //MD5加密转大写
     
@@ -48,7 +49,7 @@ function sign_md5(data) {
 // jsapi_wxpay签名计算
 function jsapi_sign_md5(data) {
     const order_template = {
-        mch_id: "*******",  //商户号必填
+        mch_id: "1684186147",  //商户号必填
         out_trade_no: data.out_trade_no,  //订单号必填
         total_fee: data.total_fee,  //支付金额必填
         body: data.product,  //商品描述必填
@@ -56,7 +57,7 @@ function jsapi_sign_md5(data) {
         notify_url: "http://topay.zyy.muo.cc:3049/notify",  //通知单地址必填
         attach: "无",    //附加数据
         time_expire: "5m",  //订单失效时间
-        developer_appid: "*******",  //应用id
+        developer_appid: "1041589049015120",  //应用id
         return_url: "https://docs.qq.com/form/page/DY0p3Q0NCWWFmTEtS"  //支付成功后跳转地址
     }
 
@@ -66,7 +67,7 @@ function jsapi_sign_md5(data) {
     const stringA = `body=${order_template.body}&mch_id=${order_template.mch_id}&notify_url=${order_template.notify_url}&out_trade_no=${order_template.out_trade_no}&timestamp=${order_template.timestamp}&total_fee=${order_template.total_fee}`
       
       
-    const stringSignTemp = stringA + "&key=a85e54ec46618452475e7e60b5870d81";
+    const stringSignTemp = stringA + "&key=xxxxxxxxxx";
     
     const signMd5 = cryptoMD5(stringSignTemp).toString().toUpperCase();  //MD5加密转大写
     
@@ -74,6 +75,8 @@ function jsapi_sign_md5(data) {
         ...order_template,
         sign: signMd5,
     }
+    console.log(stringSignTemp);
+    console.log(updata);
     
     return updata;
 }
@@ -81,7 +84,7 @@ function jsapi_sign_md5(data) {
 // 订单查询签名计算
 function sign_query(data) {
     const order_template = {
-        mch_id: "*******",  //商户号必填
+        mch_id: "1684186147",  //商户号必填
         out_trade_no: data.out_trade_no,  //订单号必填
         timestamp: Date.now().toString().substr(0, 10),  //十位时间戳必填
     }
@@ -90,7 +93,7 @@ function sign_query(data) {
     const stringA = `mch_id=${order_template.mch_id}&out_trade_no=${order_template.out_trade_no}&timestamp=${order_template.timestamp}`
       
       
-    const stringSignTemp = stringA + "&key=a85e54ec46618452475e7e60b5870d81";
+    const stringSignTemp = stringA + "&key=xxxxxxxxx";
     
     const signMd5 = cryptoMD5(stringSignTemp).toString().toUpperCase();  //MD5加密转大写
     
@@ -103,7 +106,7 @@ function sign_query(data) {
 }
 
 
-// 下单返回收款码
+// 微信支付回调下单返回收款码
 router.post("/wxpay", koaJwt({ secret }), async (ctx) => {
     const { user_id, username, goods } = ctx.request.body;
     const schema = Joi.object({
@@ -114,103 +117,70 @@ router.post("/wxpay", koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, username, goods });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
-    if (goods === "摸鱼股东") {  //摸鱼股东  摸鱼股东
-        let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
-        const config = {
-            method: "post",
-            url: "https://api.ltzf.cn/api/wxpay/native",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data: sign_md5({
-                total_fee: price_vip,
-                product: '摸鱼股东',
-                out_trade_no: out_trade_no,
-            }),
-        };
-        
-        try {
-            const response = await axios(config); // 使用 await 等待请求完成
-            console.log(response.data);
-            ctx.status = 200;
-            // 加上订单号返回
-
-            const saveOrder = chatOrder.create({
-                order_id: out_trade_no,
-                user_id,
-                username,
-                goods: "摸鱼股东",
-                price: price_vip,
-                status: 1,
-                QRcode_url: response.data.data.QRcode_url,
-                code_url: response.data.data.code_url,
-            })
-
-            ctx.body = {
-                code: 200,
-                message: "success",
-                data: {...response.data.data, out_trade_no: out_trade_no},
-            };
-
-        } catch (error) {
-            console.error(error);
-            ctx.status = 403; // 错误时设置为 403 状态
-            ctx.body = 'error';
-        }
+    // 价格
+    let price = 0;
+    if (goods === "摸鱼股东") {
+        price = price_vip;
+    }
+    if (goods === "超级摸鱼股东") {
+        price = price_vip_pro;
+    }
+    if (goods === "摸鱼Ai") {
+        price = ai;
     }
 
-    if (goods === "超级摸鱼股东") {  //超级摸鱼股东  超级摸鱼股东
-        let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
-        const config = {
-            method: "post",
-            url: "https://api.ltzf.cn/api/wxpay/native",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data: sign_md5({
-                total_fee: price_vip_pro,
-                product: '超级摸鱼股东',
-                out_trade_no: out_trade_no,
-            }),
+    let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
+    const config = {
+        method: "post",
+        url: "https://api.ltzf.cn/api/wxpay/native",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data: sign_md5({
+            total_fee: price,
+            product: '摸鱼股东',
+            out_trade_no: out_trade_no,
+        }),
+    };
+    
+    try {
+        const response = await axios(config); // 使用 await 等待请求完成
+        console.log(response.data);
+        ctx.status = 200;
+        // 加上订单号返回
+
+        const saveOrder = chatOrder.create({
+            order_id: out_trade_no,
+            user_id,
+            username,
+            goods: "摸鱼股东",
+            price: price,
+            status: 1,
+            QRcode_url: response.data.data.QRcode_url,
+            code_url: response.data.data.code_url,
+        })
+
+        ctx.body = {
+            code: 200,
+            message: "success",
+            data: {...response.data.data, out_trade_no: out_trade_no},
         };
-        
-        try {
-            const response = await axios(config); // 使用 await 等待请求完成
-            console.log(response.data);
-            ctx.status = 200;
-            // 加上订单号返回
 
-            const saveOrder = chatOrder.create({
-                order_id: out_trade_no,
-                user_id,
-                username,
-                goods: "超级摸鱼股东",
-                price: price_vip_pro,
-                status: 1,
-                QRcode_url: response.data.data.QRcode_url,
-                code_url: response.data.data.code_url,
-            })
-
-            ctx.body = {
-                code: 200,
-                message: "success",
-                data: {...response.data.data, out_trade_no: out_trade_no},
-            };
-        } catch (error) {
-            console.error(error);
-            ctx.status = 403; // 错误时设置为 403 状态
-            ctx.body = 'error';
-        }
+    } catch (error) {
+        console.error(error);
+        ctx.status = 403; // 错误时设置为 403 状态
+        ctx.body = { message: 'error', code: 403 };
     }
+
 });
 
 
-// 下单返回收款码
-router.post("/jsapi_wxpay", koaJwt({ secret }), async (ctx) => {
+// 网站下单返回收款码
+router.post("/jsapi_wxpay", async (ctx) => {
     const { user_id, username, goods } = ctx.request.body;
     const schema = Joi.object({
         user_id: Joi.string().required(),
@@ -220,96 +190,64 @@ router.post("/jsapi_wxpay", koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, username, goods });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
+    // 价格
+    let price = 0;
     if (goods === "摸鱼股东") {
-        let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
-        const config = {
-            method: "post",
-            url: "https://api.ltzf.cn/api/wxpay/jsapi_convenient",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data: jsapi_sign_md5({
-                total_fee: price_vip,
-                product: '摸鱼股东',
-                out_trade_no: out_trade_no,
-            }),
-        };
-        
-        try {
-            const response = await axios(config); // 使用 await 等待请求完成
-            // console.log(response.data);
-
-            const saveOrder = chatOrder.create({
-                order_id: out_trade_no,
-                user_id,
-                username,
-                goods: "摸鱼股东",
-                price: price_vip,
-                status: 0,
-                code_url: response.data.data.order_url,
-                QRcode_url: response.data.data.QRcode_url,
-            })
-            
-            // 加上订单号返回
-            ctx.body = {
-                code: 200,
-                message: "success",
-                data: {...response.data.data, out_trade_no: out_trade_no},
-            };
-        } catch (error) {
-            console.error(error);
-            ctx.status = 403; // 错误时设置为 403 状态
-            ctx.body = 'error';
-        }
+        price = price_vip;
     }
-
     if (goods === "超级摸鱼股东") {
-        let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
-        const config = {
-            method: "post",
-            url: "https://api.ltzf.cn/api/wxpay/jsapi_convenient",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data: jsapi_sign_md5({
-                total_fee: price_vip_pro,
-                product: '超级摸鱼股东',
-                out_trade_no: out_trade_no,
-            }),
-        };
-        
-        try {
-            const response = await axios(config); // 使用 await 等待请求完成
-            console.log(response.data);
-
-            const saveOrder = chatOrder.create({
-                order_id: out_trade_no,
-                user_id,
-                username,
-                goods: "超级摸鱼股东",
-                price: price_vip_pro,
-                status: 0,
-                code_url: response.data.data.order_url,
-                QRcode_url: response.data.data.QRcode_url,
-            })
-
-            // 加上订单号返回
-            ctx.body = {
-                code: 200,
-                message: "success",
-                data: {...response.data.data, out_trade_no: out_trade_no},
-            };
-        
-        } catch (error) {
-            console.error(error);
-            ctx.status = 403; // 错误时设置为 403 状态
-            ctx.body = 'error';
-        }
+        price = price_vip_pro;
     }
+    if (goods === "摸鱼Ai") {
+        price = ai;
+    }
+
+    let out_trade_no = 'oid_' + customAlphabet(nanoidNode, 10)();
+    const config = {
+        method: "post",
+        url: "https://api.ltzf.cn/api/wxpay/jsapi_convenient",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data: jsapi_sign_md5({
+            total_fee: price,
+            product: goods,
+            out_trade_no: out_trade_no,
+        }),
+    };
+    
+    try {
+        const response = await axios(config); // 使用 await 等待请求完成
+        // console.log(response.data);
+
+        const saveOrder = chatOrder.create({
+            order_id: out_trade_no,
+            user_id,
+            username,
+            goods: goods,
+            price: price,
+            status: 0,
+            code_url: response.data.data.order_url,
+            QRcode_url: response.data.data.QRcode_url,
+        })
+        
+        // 加上订单号返回
+        ctx.body = {
+            code: 200,
+            message: "success",
+            data: {...response.data.data, price: price, out_trade_no: out_trade_no},
+        };
+    } catch (error) {
+        console.error(error);
+        ctx.status = 403; // 错误时设置为 403 状态
+        ctx.body = { message: 'error', code: 403 };
+    }
+
+
 });
 
 
@@ -324,7 +262,7 @@ router.post("/order", koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, username, out_trade_no });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -426,11 +364,88 @@ router.post("/order", koaJwt({ secret }), async (ctx) => {
 
         // console.log(response.data);
         ctx.status = 200; // 确保是 ctx.status
-        ctx.body = {data: response.data, message: "success"}; // 返回响应数据
+        ctx.body = {data: response.data, message: "success", code: 200}; // 返回响应数据
     } catch (error) {
         console.error(error);
         ctx.status = 403; // 错误时设置为 403 状态
-        ctx.body = 'error';
+        ctx.body = { message: 'error', code: 403 };
+    }
+});
+
+
+// 通用查询订单状态
+router.post("/order-common", async (ctx) => {
+    const { user_id, username, out_trade_no } = ctx.request.body;
+    const schema = Joi.object({
+        user_id: Joi.string().required(),
+        username: Joi.string().required(),
+        out_trade_no: Joi.string().required(),
+    });
+    const { error } = schema.validate({ user_id, username, out_trade_no });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message, code: 400 };
+        return;
+    }
+
+    const config = {
+        method: "post",
+        url: "https://api.ltzf.cn/api/wxpay/get_pay_order",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data: sign_query({out_trade_no: out_trade_no}),
+    };
+      
+    try {
+        const response = await axios(config); // 使用 await 等待请求完成
+        console.log(response.data);
+
+        if(response.data.code === 1){
+            ctx.status = 500;
+            ctx.body = {
+                code: 200,
+                message: "await",
+                data: {
+                    pay_status: 0,
+                    message: response.data.msg,
+                },
+            };
+            return;
+        }
+
+        if(response.data.data.pay_status === 0){
+            ctx.status = 500;
+            ctx.body = {
+                code: 200,
+                message: "await",
+                data: {
+                    pay_status: response.data.data.pay_status,
+                    message: response.data.msg,
+                },
+            };
+            return;
+        }
+
+        // 更新订单状态
+        const saveOrder = chatOrder.update(
+            {
+                status: response.data.data.pay_status
+            },
+            {
+                where: {
+                    order_id: out_trade_no,
+                },
+            }
+        );
+
+        // console.log(response.data);
+        ctx.status = 200; // 确保是 ctx.status
+        ctx.body = {data: response.data, message: "success", code: 200}; // 返回响应数据
+    } catch (error) {
+        console.error(error);
+        ctx.status = 403; // 错误时设置为 403 状态
+        ctx.body = { message: 'error', code: 403 };
     }
 });
 

@@ -9,7 +9,8 @@ router.get('/sysState', async (ctx) => {
         const result = await getSystemInfo();
         ctx.body = {
             code: 200,
-            data: result
+            data: result,
+            message: '获取系统状态成功'
         };
     } catch (error) {
         console.log(error);

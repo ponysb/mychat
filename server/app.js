@@ -29,7 +29,7 @@ const { initSocket } = require('./routes/socket');
 const robotRouter = require('./routes/robot');
 const mount = require('koa-mount');
 require('dotenv').config(); // 引入dotenv来加载.env文件中的环境变量
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 
 const app = new Koa();
 
@@ -122,6 +122,12 @@ app.use(async (ctx, next) => {
     }
 
 
+    // 来源非mychat.zhuayuya.com的请求直接跳过
+    if (ctx.headers.referer && !ctx.headers.referer.includes('mychat.zhuayuya.com') && !ctx.headers.referer.includes('localhost')) {
+        await next();
+        return;
+    }
+
     // 判断是否为post
     if (ctx.method === 'POST') {
         let token = ctx.request.headers.authorization;
@@ -139,7 +145,7 @@ app.use(async (ctx, next) => {
                         username: decoded.username
                     };
                 }else{
-                    return ctx.status = 401, ctx.body = { message: '请登录' };
+                    return ctx.status = 401, ctx.body = { message: '请登录', code: 401 };
                 }
                 
             } catch (err) {
@@ -211,13 +217,14 @@ onerror(app, {
       // 处理 ECONNRESET 错误
       if (err.code === 'ECONNRESET') {
         ctx.status = 500;
-        ctx.body = 'Connection reset by peer';
+        ctx.body = { message: 'Connection reset by peer', code: 500 };
       } else {
         // 处理其他未知错误
         ctx.status = err.status || 500;
         ctx.body = {
-          message: err.message || 'Internal Server Error',
-          stack: process.env.NODE_ENV === 'development' ? err.stack : undefined, // 开发环境显示堆栈信息
+            code: err.status || 500,
+            message: err.message || 'Internal Server Error',
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined, // 开发环境显示堆栈信息
         };
       }
     },
@@ -274,7 +281,9 @@ async function startServer() {
             if(robotData[key]){
                 if(robotData[key].robot_id != robot_id){
                     // 机器人id错误
+                    ctx.status = 400;
                     ctx.body = {
+                        code: 400,
                         message: '机器人id错误',
                     }
                     return;
@@ -282,7 +291,9 @@ async function startServer() {
 
                 // 状态判断
                 if(robotData[key].status != 1){
+                    ctx.status = 400;
                     ctx.body = {
+                        code: 400,
                         message: '机器人未启用状态',
                     }
                     return;
@@ -301,12 +312,14 @@ async function startServer() {
                 }else{
                     // 不包含则返回错误信息
                     ctx.body = {
+                        code: 400,
                         message: '机器人未加入该房间或不支持此消息类型',
                     }
                     return;
                 }
             }else{
                 ctx.body = {
+                    code: 400,
                     message: 'key错误',
                 }
                 return;
@@ -328,6 +341,7 @@ async function startServer() {
                 if(item.user_id == ctx.state.user.user_id||item.ip == realIp){
                     // 封禁用户
                     ctx.body = {
+                        code: 400,
                         message: '你已被封禁，请联系管理员',
                     }
                     return;

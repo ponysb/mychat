@@ -1,4 +1,4 @@
-const { User, Room, chatAppComment, chatApp } = require('../models/models');
+const { User, chatAppComment, AppTag, chatApp } = require('../models/models');
 const { Op, Sequelize } = require('sequelize');
 const Router = require('koa-router');
 const Joi = require('joi');
@@ -12,8 +12,10 @@ const koaBody = require('koa-body').default;
 const { wordFilter } = require('../filter/AhoCorasick');
 
 const router = new Router();
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 const nanoidNode = '1234567890abcdefghijklmnopqrstuvwxyz';
+
+
 
 // 聊天室获取app路由
 router.post('/getApp', koaJwt({ secret }), async (ctx) => {
@@ -24,61 +26,50 @@ router.post('/getApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
     try {
-        const appList = await chatApp.findAll({
-            where: { status: 1 },
-            order: [['category', 'ASC']], // 按 category 字段升序排列
+        const appTag = await AppTag.findAll({
+            where: { status: 1, app_num: { [Op.gt]: 0 }  },
+            order: [['app_num', 'DESC']], // 按 category 字段升序排列
         });
-    
-        // 初始化返回的数据结构
-        const groupedAppList = {
-            recommended: [],  // 存放推荐应用
-            groupedByCategory: [], // 存放按 category 字段分组的应用
-        };
-    
-        let currentGroup = null;
-        let ungroupedCategory = null; // 用于标记未分组的分类
 
-        appList.forEach((app) => {
-            let { category: categoryName, top, ...appInfo } = app.dataValues; // 修改为 let
-    
-            // 处理推荐应用
-            if (top) {
-                groupedAppList.recommended.push(appInfo);
-                return; // 推荐的应用不再参与分类
+        // 根据tag获取app
+        let appTagList = [];
+        appTag.map((item) => {
+            appTagList.push(item.tag_name);
+        })
+
+        // 构建查询条件
+        const tagConditions = appTagList.map(tag => ({
+            tag: {
+                [Op.contains]: [tag]
             }
-    
-            // 处理 category 字段为空或 null 的应用，归为 "未分组"
-            if (!categoryName) {
-                categoryName = '未分组'; // 为空或 null 的 category 归为 "未分组"
-            }
-    
-            // 检查是否是未分组的分类，如果没有 "未分组" 分类，则创建
-            if (categoryName === '未分组') {
-                if (!ungroupedCategory) {
-                    ungroupedCategory = { categoryName, apps: [] };
-                    groupedAppList.groupedByCategory.push(ungroupedCategory);
-                }
-                ungroupedCategory.apps.push(appInfo);
-                return;
-            }
-    
-            // 按 category 字段分组
-            if (!currentGroup || currentGroup.categoryName !== categoryName) {
-                currentGroup = {
-                    categoryName, // 分组的 category 名称
-                    apps: [],   // 分组内的应用列表
-                };
-                groupedAppList.groupedByCategory.push(currentGroup); // 将新的分组添加到结果数组
-            }
-    
-            // 将当前应用信息添加到对应分组
-            currentGroup.apps.push(appInfo);
+        }));
+
+        const appList = await chatApp.findAll({
+            where: {
+                [Op.or]: tagConditions,
+                status: 1,
+            },
+            order: [['sort', 'ASC']], // 按 sort 字段升序排列
         });
+        // console.log(appList);
+
+        // 按照 tag 分组
+        const groupedAppList = [];
+        appTag.map((tag) => {
+            const apps = appList.filter((app) => app.tag.includes(tag.tag_name));
+            if (apps.length > 0) {
+                groupedAppList.push({
+                    tag: tag.tag_name,
+                    apps,
+                });
+            }
+        });
+    
     
         ctx.body = {
             code: 200,
@@ -87,7 +78,7 @@ router.post('/getApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -101,73 +92,80 @@ router.post('/getChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
     try {
         const appList = await chatApp.findAll({
             where: { status: 1 },
-            order: [['category', 'ASC']], // 按 category 字段升序排列
-        });
-    
-        // 初始化返回的数据结构
-        const groupedAppList = {
-            recommended: [],  // 存放推荐应用
-            groupedByCategory: [], // 存放按 category 字段分组的应用
-        };
-    
-        let currentGroup = null;
-        let ungroupedCategory = null; // 用于标记未分组的分类
-
-        appList.forEach((app) => {
-            let { category: categoryName, top, ...appInfo } = app.dataValues; // 修改为 let
-    
-            // 处理推荐应用
-            if (top) {
-                groupedAppList.recommended.push(appInfo);
-                return; // 推荐的应用不再参与分类
-            }
-    
-            // 处理 category 字段为空或 null 的应用，归为 "未分组"
-            if (!categoryName) {
-                categoryName = '未分组'; // 为空或 null 的 category 归为 "未分组"
-            }
-    
-            // 检查是否是未分组的分类，如果没有 "未分组" 分类，则创建
-            if (categoryName === '未分组') {
-                if (!ungroupedCategory) {
-                    ungroupedCategory = { categoryName, apps: [] };
-                    groupedAppList.groupedByCategory.push(ungroupedCategory);
-                }
-                ungroupedCategory.apps.push(appInfo);
-                return;
-            }
-    
-            // 按 category 字段分组
-            if (!currentGroup || currentGroup.categoryName !== categoryName) {
-                currentGroup = {
-                    categoryName, // 分组的 category 名称
-                    apps: [],   // 分组内的应用列表
-                };
-                groupedAppList.groupedByCategory.push(currentGroup); // 将新的分组添加到结果数组
-            }
-    
-            // 将当前应用信息添加到对应分组
-            currentGroup.apps.push(appInfo);
+            order: [['createdAt', 'DESC']], // 按 createdAt 字段升序排列
         });
     
         ctx.body = {
             code: 200,
             message: '获取app分类信息成功',
-            data: groupedAppList,
+            data: appList,
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
+
+// 获取应用标签
+router.get('/getChatAppTag', async (ctx) => {
+    try {
+        const appTagList = await AppTag.findAll({
+            where: { status: 1, app_num: { [Op.gt]: 0 } },
+            order: [['app_num', 'DESC']], // 按 app_num 字段升序排列
+        });
+        ctx.body = {
+            code: 200,
+            message: '获取应用标签成功',
+            data: appTagList,
+        };
+    } catch (err) {
+        ctx.status = 500;
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
+    }
+});
+
+
+// app标签查询
+router.get('/searchChatApp', async (ctx) => {
+    const { tag } = ctx.request.query;
+    const schema = Joi.object({
+        tag: Joi.string().required(),
+    });
+    const { error } = schema.validate({ tag });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message, code: 400 };
+        return;
+    }
+    // console.log(tag);
+    try {
+        const appList = await chatApp.findAll({
+            where: {
+                tag: {
+                    [Op.contains]: [tag],
+                },
+                status: 1,
+            }
+        });
+
+        ctx.body = {
+            code: 200,
+            message: '获取app分类信息成功',
+            data: appList,
+        };
+    } catch (err) {
+        ctx.status = 500;
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
+    }
+});
 
 
 // 添加应用
@@ -185,7 +183,7 @@ router.post('/addChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, username, url, title, desc, source, type });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -195,7 +193,7 @@ router.post('/addChatApp', koaJwt({ secret }), async (ctx) => {
     });
     if (existApp) {
         ctx.status = 400;
-        ctx.body = { message: '应用已存在' };
+        ctx.body = { message: '应用已存在', code: 400 };
         return;
     }
 
@@ -225,7 +223,7 @@ router.post('/addChatApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { err };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -241,7 +239,7 @@ router.post('/searchChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, keyword });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -264,7 +262,7 @@ router.post('/searchChatApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -278,7 +276,7 @@ router.post('/getMyChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -295,7 +293,7 @@ router.post('/getMyChatApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -315,7 +313,7 @@ router.post('/editChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ app_id, user_id, title, desc, url, icon, tag });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -336,7 +334,7 @@ router.post('/editChatApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -351,7 +349,7 @@ router.post('/deleteChatApp', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, app_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -369,7 +367,7 @@ router.post('/deleteChatApp', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -418,7 +416,7 @@ router.post('/editChatAppPlacard', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ app_id, user_id, placard });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -435,7 +433,7 @@ router.post('/editChatAppPlacard', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -450,7 +448,7 @@ router.post('/getChatAppDetail', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ app_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -465,7 +463,7 @@ router.post('/getChatAppDetail', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -479,7 +477,7 @@ router.post('/recordAppSee', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ app_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -509,7 +507,7 @@ router.post('/recordAppSee', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -549,7 +547,7 @@ router.post('/sendComment', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, app_id, content, username });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -569,7 +567,7 @@ router.post('/sendComment', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -584,7 +582,7 @@ router.post('/getCommentList', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ app_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -623,7 +621,7 @@ router.post('/getCommentList', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -638,7 +636,7 @@ router.post('/appLike', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, app_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -676,7 +674,7 @@ router.post('/appLike', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -690,7 +688,7 @@ router.post('/commentLike', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, comment_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -730,7 +728,7 @@ router.post('/commentLike', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
@@ -744,7 +742,7 @@ router.post('/getWebsiteInfo', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ url });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -771,14 +769,14 @@ router.post('/getWebsiteInfo', koaJwt({ secret }), async (ctx) => {
         };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
 
 // 网站安全性检测
 router.get('/checkWebsiteSecurity', async (ctx) => {
-    console.log(ctx.request.query);
+    // console.log(ctx.request.query);
     const { url } = ctx.request.query;
     const schema = Joi.object({
         url: Joi.string().required(),
@@ -786,7 +784,7 @@ router.get('/checkWebsiteSecurity', async (ctx) => {
     const { error } = schema.validate({ url });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -875,14 +873,14 @@ router.get('/checkWebsiteSecurity', async (ctx) => {
             };
         }
   
-        console.log(filter);
+        // console.log(filter);
 
         await browser.close();
 
     } catch (err) {
         ctx.status = 500;
         await browser.close();
-        ctx.body = { message: '服务器错误', error: err.message };
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
     }
 });
 
