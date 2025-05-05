@@ -28,8 +28,7 @@
 - 克隆项目  
 - 安装依赖 `` pnpm i ``   推荐使用 ``pnpm`` 其他方式自行配置  ``npm install ``、``cnpm install``、``yarn install``
 - 数据库配置环境变量修改根目录 ``.env  ``  文件
-- 启动测试环境 `` pnpm dev ``  注意，``frontend``  目录下需要单独执行一边 `` pnpm i `` 安装依赖
-- 后端端口号默认 ``9528``
+-  启动测试环境 `` pnpm dev ``  注意，``frontend``  目录下需要单独执行一边 `` pnpm i `` 安装依赖
 
 
 ## 运行项目

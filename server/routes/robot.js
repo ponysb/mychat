@@ -23,7 +23,7 @@ router.post('/sendMessage', async (ctx) => {
     const { error } = schema.validate({ room_id, robot_id, msg, user_id, nickname, type, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -48,10 +48,10 @@ router.post('/sendMessage', async (ctx) => {
     // 创建聊天记录
     try {
         const newChatRecord = await ChatRecord.create(msg_data);
-        ctx.body = { message: '发送消息成功', data: newChatRecord };
+        ctx.body = { message: '发送消息成功', data: newChatRecord, code: 200 };
     } catch (error) {
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 
     // 向房间内所有用户广播消息
@@ -76,7 +76,7 @@ router.post('/sendCustom', async (ctx) => {
     const { error } = schema.validate({ room_id, robot_id, msg, user_id, nickname, type, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -99,10 +99,10 @@ router.post('/sendCustom', async (ctx) => {
     // 创建聊天记录
     try {
         const newChatRecord = await ChatRecord.create(msg_data);
-        ctx.body = { message: '发送消息成功', data: newChatRecord };
+        ctx.body = { message: '发送消息成功', data: newChatRecord, code: 200 };
     } catch (error) {
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 
     // 向房间内所有用户广播消息

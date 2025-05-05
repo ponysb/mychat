@@ -2,6 +2,7 @@ const { User, Room, chatApp, chatReport, ChatRecord, chatEmoticon } = require('.
 const { Op, Sequelize } = require('sequelize');
 const Router = require('koa-router');
 const Joi = require('joi');
+const sharp = require('sharp');
 const { customAlphabet } = require('nanoid');
 const fs = require('fs');
 const path = require('path');
@@ -11,8 +12,12 @@ const { wordFilter } = require('../filter/AhoCorasick');
 const { getIo } = require('./socket');
 const router = new Router();
 const koaBody = require('koa-body').default;
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 const nanoidNode = '1234567890abcdefghijklmnopqrstuvwxyz';
+const NodeCache = require('node-cache');
+// 创建缓存实例，默认缓存时间为1小时
+const chatCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
+
 
 // 创建房间
 router.post('/createRoom', async (ctx) => {
@@ -26,7 +31,7 @@ router.post('/createRoom', async (ctx) => {
     const { error } = schema.validate({ name, desc, avatar });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -39,7 +44,7 @@ router.post('/createRoom', async (ctx) => {
     });
     if (room) {
         ctx.status = 400;
-        ctx.body = { message: '房间已存在' };
+        ctx.body = { message: '房间已存在', code: 400 };
         return;
     }
 
@@ -76,11 +81,11 @@ router.post('/createRoom', async (ctx) => {
             { where: { id:userRooms.id } } // 条件
         );
 
-        ctx.body = { message: '创建房间成功', data: {newRoom, rooms: userRooms.rooms} };
+        ctx.body = { message: '创建房间成功', data: {newRoom, rooms: userRooms.rooms}, code: 200 };
     } catch (error) {
         ctx.status = 500;
         console.log(error);
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 
 })
@@ -100,14 +105,14 @@ router.post('/sendMessage', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id, nickname, type, msg, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
     // 判断字数限制
     if(msg.length > 1000){
         ctx.status = 400;
-        ctx.body = { message: '字数超过限制' };
+        ctx.body = { message: '字数超过限制', code: 400 };
         return;
     }
 
@@ -117,12 +122,12 @@ router.post('/sendMessage', koaJwt({ secret }), async (ctx) => {
     try{
         if(tokenData[user_id].token !== ctx.request.headers.authorization.split(' ')[1]){
             ctx.status = 401;
-            ctx.body = { message: 'token验证失败请重新登录' };
+            ctx.body = { message: 'token验证失败请重新登录', code: 401 };
             return;
         }
     } catch(err){
         ctx.status = 401;
-        ctx.body = { message: 'token验证失败请重新登录' };
+        ctx.body = { message: 'token验证失败请重新登录', code: 401 };
         return;
     }
 
@@ -154,14 +159,17 @@ router.post('/sendMessage', koaJwt({ secret }), async (ctx) => {
         const io = getIo();
         io.to(room_id).emit('messages', msg_data)
         
-        ctx.body = { message: '发送消息成功', data: msg_data };
+        ctx.body = { message: '发送消息成功', data: msg_data, code: 200 };
 
         // 创建聊天记录
         await ChatRecord.create(msg_data);
 
+        // 将新消息添加到缓存
+        addMessageToCache(room_id, msg_data);
+
     } catch (error) {
         ctx.status = 500;
-        ctx.body = { error };
+        ctx.body = { message:error, code: 500 };
     }
 
 })
@@ -175,7 +183,7 @@ router.post('/sendFile', koaJwt({ secret }), koaBody({    // 注册文件上传�
         uploadDir: path.join(__dirname, '../public/chatFiles'), // 上传目录
     },
 }), async (ctx) => {
-    console.log(ctx.request.body)
+    // console.log(ctx.request.body)
     const { room_id, nickname, source } = ctx.request.body;
     const { user_id, username } = ctx.state.user
     const schema = Joi.object({
@@ -188,7 +196,7 @@ router.post('/sendFile', koaJwt({ secret }), koaBody({    // 注册文件上传�
     const { error } = schema.validate({ room_id, user_id, nickname, username, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -198,12 +206,12 @@ router.post('/sendFile', koaJwt({ secret }), koaBody({    // 注册文件上传�
     try{
         if(tokenData[user_id].token !== ctx.request.headers.authorization.split(' ')[1]){
             ctx.status = 401;
-            ctx.body = { message: 'token验证失败请重新登录' };
+            ctx.body = { message: 'token验证失败请重新登录', code: 401 };
             return;
         }
     } catch(err){
         ctx.status = 401;
-        ctx.body = { message: 'token验证失败请重新登录' };
+        ctx.body = { message: 'token验证失败请重新登录', code: 401 };
         return;
     }
 
@@ -233,13 +241,16 @@ router.post('/sendFile', koaJwt({ secret }), koaBody({    // 注册文件上传�
         const io = getIo();
         io.to(room_id).emit('messages', msg_data)
         
-        ctx.body = { message: '发送消息成功', data: msg_data };
+        ctx.body = { message: '发送消息成功', data: msg_data, code: 200 };
 
         // 创建聊天记录
         await ChatRecord.create(msg_data);
+
+        // 将新消息添加到缓存
+        addMessageToCache(room_id, msg_data);
     } catch (error) {
         ctx.status = 500;
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 
 })
@@ -259,7 +270,7 @@ router.post('/sendEmoticon', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id, nickname, username, emoticon_id, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -269,12 +280,12 @@ router.post('/sendEmoticon', koaJwt({ secret }), async (ctx) => {
     try{
         if(tokenData[user_id].token !== ctx.request.headers.authorization.split(' ')[1]){
             ctx.status = 401;
-            ctx.body = { message: 'token验证失败请重新登录' };
+            ctx.body = { message: 'token验证失败请重新登录', code: 401 };
             return;
         }
     } catch(err){
         ctx.status = 401;
-        ctx.body = { message: 'token验证失败请重新登录' };
+        ctx.body = { message: 'token验证失败请重新登录', code: 401 };
         return;
     }
 
@@ -287,7 +298,7 @@ router.post('/sendEmoticon', koaJwt({ secret }), async (ctx) => {
     });
     if (!emoticon) {
         ctx.status = 400;
-        ctx.body = { message: '表情不存在' };
+        ctx.body = { message: '表情不存在', code: 400 };
         return;
     }
 
@@ -316,13 +327,16 @@ router.post('/sendEmoticon', koaJwt({ secret }), async (ctx) => {
         const io = getIo();
         io.to(room_id).emit('messages', msg_data)
         
-        ctx.body = { message: '发送消息成功', data: msg_data };
+        ctx.body = { message: '发送消息成功', data: msg_data, code: 200 };
 
         // 创建聊天记录
         await ChatRecord.create(msg_data);
+
+        // 将新消息添加到缓存
+        addMessageToCache(room_id, msg_data);
     } catch (error) {
         ctx.status = 500;
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 
 })
@@ -342,7 +356,7 @@ router.post('/sendAppMessage', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id, nickname, username, app_id, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -352,12 +366,12 @@ router.post('/sendAppMessage', koaJwt({ secret }), async (ctx) => {
     try{
         if(tokenData[user_id].token !== ctx.request.headers.authorization.split(' ')[1]){
             ctx.status = 401;
-            ctx.body = { message: 'token验证失败请重新登录' };
+            ctx.body = { message: 'token验证失败请重新登录', code: 401 };
             return;
         }
     } catch(err){
         ctx.status = 401;
-        ctx.body = { message: 'token验证失败请重新登录' };
+        ctx.body = { message: 'token验证失败请重新登录', code: 401 };
         return;
     }
 
@@ -370,7 +384,7 @@ router.post('/sendAppMessage', koaJwt({ secret }), async (ctx) => {
     });
     if (!app) {
         ctx.status = 400;
-        ctx.body = { message: '应用不存在' };
+        ctx.body = { message: '应用不存在', code: 400 };
         return;
     }
 
@@ -405,14 +419,16 @@ router.post('/sendAppMessage', koaJwt({ secret }), async (ctx) => {
         const io = getIo();
         io.to(room_id).emit('messages', msg_data)
         
-        ctx.body = { message: '发送消息成功', data: msg_data };
+        ctx.body = { message: '发送消息成功', data: msg_data, code: 200 };
 
         // 创建聊天记录
         await ChatRecord.create(msg_data);
 
+        // 将新消息添加到缓存
+        addMessageToCache(room_id, msg_data);
     } catch (error) {
         ctx.status = 500;
-        ctx.body = {message:  error };
+        ctx.body = {message:  error, code: 500 };
     }
 
 })
@@ -438,7 +454,7 @@ router.post('/sendCustomImage', koaJwt({ secret }), koaBody({    // 注册文件
     const { error } = schema.validate({ room_id, user_id, nickname, username, source });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -446,7 +462,7 @@ router.post('/sendCustomImage', koaJwt({ secret }), koaBody({    // 注册文件
     let format = ctx.request.files.file.newFilename.split('.').pop();
     if (format !== 'jpg' && format !== 'jpeg' && format !== 'webp' && format !=='svg' && format !== 'bmp' && format !== 'png' && format !== 'gif') {
         ctx.status = 400;
-        ctx.body = { message: '图片格式不支持' };
+        ctx.body = { message: '图片格式不支持', code: 400 };
         return;
     }
 
@@ -456,13 +472,54 @@ router.post('/sendCustomImage', koaJwt({ secret }), koaBody({    // 注册文件
     try{
         if(tokenData[user_id].token !== ctx.request.headers.authorization.split(' ')[1]){
             ctx.status = 401;
-            ctx.body = { message: 'token验证失败请重新登录' };
+            ctx.body = { message: 'token验证失败请重新登录', code: 401 };
             return;
         }
     } catch(err){
         ctx.status = 401;
-        ctx.body = { message: 'token验证失败请重新登录' };
+        ctx.body = { message: 'token验证失败请重新登录', code: 401 };
         return;
+    }
+
+
+    const filePath = ctx.request.files.file.filepath;
+    const outputFilePath = path.join(__dirname, '../public/chatImages', ctx.request.files.file.newFilename);
+    if (format === 'gif') {
+        // 处理 gif 图片
+        await sharp(filePath)
+            .toFile(outputFilePath);
+    } else {
+        // 压缩并转换为 webp 格式
+        await sharp(filePath)
+            .webp({ quality: 70 })
+            .toFile(outputFilePath.replace(/\.[^/.]+$/, ".webp"));
+
+        // 生成预览图
+        await sharp(filePath)
+            .resize({ width: 50 })
+            .toFile(outputFilePath.replace(/\.[^/.]+$/, "_preview.webp"));
+    }
+
+    // 获取图片的元数据
+    const metadata = await sharp(filePath).metadata();
+
+    let resizeOptions = {};
+    if (metadata.width > 380 || metadata.height > 400) {
+        // 计算缩放比例
+        const widthRatio = 380 / metadata.width;
+        const heightRatio = 400 / metadata.height;
+        const scaleRatio = Math.min(widthRatio, heightRatio, 1); // 确保不会放大
+    
+        resizeOptions = {
+            width: Math.round(metadata.width * scaleRatio),
+            height: Math.round(metadata.height * scaleRatio),
+        };
+    } else {
+        // 不超过限制，保持原尺寸
+        resizeOptions = {
+            width: metadata.width,
+            height: metadata.height,
+        };
     }
 
     // 创建聊天记录
@@ -475,9 +532,11 @@ router.post('/sendCustomImage', koaJwt({ secret }), koaBody({    // 注册文件
         type: 'image',
         json_msg: {
             file_name: ctx.request.files.file.originalFilename,
-            file_url: ctx.request.files.file.newFilename,
+            file_url: ctx.request.files.file.newFilename.split('.')[0],  // 去掉格式
             size: ctx.request.files.file.size,
             format: format,
+            width: resizeOptions.width,
+            height: resizeOptions.height,
         },
         status: 1,
         source,
@@ -490,14 +549,16 @@ router.post('/sendCustomImage', koaJwt({ secret }), koaBody({    // 注册文件
         const io = getIo();
         io.to(room_id).emit('messages', msg_data)
         
-        ctx.body = { message: '发送消息成功', data: msg_data };
+        ctx.body = { message: '发送消息成功', data: msg_data, code: 200 };
 
         // 创建聊天记录
         await ChatRecord.create(msg_data);
 
+        // 将新消息添加到缓存
+        addMessageToCache(room_id, msg_data);
     } catch (error) {
         ctx.status = 500;
-        ctx.body = {message: error };
+        ctx.body = {message: error, code: 500 };
     }
 
 })
@@ -510,7 +571,7 @@ router.post('/getBadgeData', koaJwt({ secret }), async (ctx) => {
     const badgeFile = path.join(__dirname, '../public/data/badge.json');
     const badgeData = JSON.parse(fs.readFileSync(badgeFile, 'utf-8'));
 
-    ctx.body = { message: '获取徽章数据成功', data: badgeData };
+    ctx.body = { message: '获取徽章数据成功', data: badgeData, code: 200 };
 })
 
 
@@ -524,7 +585,7 @@ router.post('/getRoomList', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, rooms });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -556,11 +617,11 @@ router.post('/getRoomList', koaJwt({ secret }), async (ctx) => {
             ],
         });
 
-        ctx.body = { message: '获取房间列表成功', data:  getRooms};
+        ctx.body = { message: '获取房间列表成功', data:  getRooms, code: 200};
     } catch (error) {
         ctx.status = 500;
         console.log(error);
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 })
 
@@ -577,32 +638,150 @@ router.post('/getChatRecords', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id, page, limit });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
     // 查询聊天记录
     try {
-        const getChatRecords = await ChatRecord.findAll({
-            where: {
-                room_id,
-                status:1,
-            },
-            limit: limit,
-            offset: (page - 1) * limit,
-            attributes: ['msg_id', 'room_id', 'username', 'nickname', 'interact', 'json_msg', 'ymsg','msg', 'type','status','source', 'createdAt'],
-            order: [
-                ['id', 'DESC'],
-            ],
-        });
+        // 先从缓存中获取聊天记录
+        let getChatRecords = getChatRecordsFromCache(room_id, page, limit);
+        
+        // 如果缓存中没有数据，则从数据库中查询
+        if (!getChatRecords) {
+            getChatRecords = await ChatRecord.findAll({
+                where: {
+                    room_id,
+                    status: 1,
+                },
+                limit: limit,
+                offset: (page - 1) * limit,
+                attributes: ['msg_id', 'room_id', 'username', 'nickname', 'interact', 'json_msg', 'ymsg','msg', 'type','status','source', 'createdAt'],
+                order: [
+                    ['id', 'DESC'],
+                ],
+            });
+            
+            // 将查询结果存入缓存
+            setChatRecordsToCache(room_id, page, limit, getChatRecords);
+        }
 
-        ctx.body = { message: '获取聊天记录成功', data:  getChatRecords};
+        ctx.body = { message: '获取聊天记录成功', data: getChatRecords, code: 200};
     } catch (error) {
         ctx.status = 500;
         console.log(error);
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 })
+
+
+// 将聊天记录存入缓存
+const setChatRecordsToCache = (room_id, page, limit, records) => {
+    // 只缓存指定字段
+    const filteredRecords = records.map(record => {
+        const item = record.toJSON ? record.toJSON() : record;
+        return {
+            msg_id: item.msg_id,
+            room_id: item.room_id,
+            username: item.username,
+            nickname: item.nickname,
+            interact: item.interact,
+            json_msg: item.json_msg,
+            ymsg: item.ymsg,
+            msg: item.msg,
+            type: item.type,
+            status: item.status,
+            source: item.source,
+            createdAt: item.createdAt // 保留创建时间用于排序
+        };
+    });
+    
+    const cacheKey = `chat_${room_id}_${page}_${limit}`;
+    chatCache.set(cacheKey, filteredRecords);
+
+    // 获取房间的消息计数
+    let roomMsgCount = chatCache.get(`room_msg_count_${room_id}`) || 0;
+
+    // 如果是第一页，更新房间消息计数
+    if (page === 1) {
+        roomMsgCount = records.length;
+    } else {
+        roomMsgCount = Math.max(roomMsgCount, (page - 1) * limit + records.length);
+    }
+
+    // 存储房间消息计数
+    chatCache.set(`room_msg_count_${room_id}`, roomMsgCount);
+
+    // 如果房间消息数超过1000条，清空该房间的所有缓存
+    if (roomMsgCount > 1000) {
+        clearRoomCache(room_id);
+    }
+};
+
+
+// 缓存聊天记录相关函数查询缓存中的聊天记录
+const getChatRecordsFromCache = (room_id, page, limit) => {
+    const cacheKey = `chat_${room_id}_${page}_${limit}`;
+    // console.log(cacheKey);
+    return chatCache.get(cacheKey);
+};
+
+// 添加新消息到缓存
+const addMessageToCache = (room_id, message) => {
+    // 获取第一页的缓存
+    const cacheKey = `chat_${room_id}_1_100`; // 假设默认每页100条
+    const cachedMessages = chatCache.get(cacheKey);
+
+    if (cachedMessages) {
+        // 只保留指定字段
+        const filteredMessage = {
+            msg_id: message.msg_id,
+            room_id: message.room_id,
+            username: message.username,
+            nickname: message.nickname,
+            interact: message.interact,
+            json_msg: message.json_msg,
+            ymsg: message.ymsg,
+            msg: message.msg,
+            type: message.type,
+            status: message.status,
+            source: message.source,
+            createdAt: message.createdAt || new Date() // 确保有创建时间
+        };
+        
+        // 将新消息添加到缓存的开头（因为是按时间倒序排列）
+        cachedMessages.unshift(filteredMessage);
+        // 如果缓存消息超过100条，保留前100条
+        if (cachedMessages.length > 100) {
+            cachedMessages.length = 100;
+        }
+        chatCache.set(cacheKey, cachedMessages);
+
+        // 更新房间消息计数
+        let roomMsgCount = chatCache.get(`room_msg_count_${room_id}`) || 0;
+        chatCache.set(`room_msg_count_${room_id}`, roomMsgCount + 1);
+
+        // 如果房间消息数超过1000条，清空该房间的所有缓存
+        if (roomMsgCount + 1 > 1000) {
+            clearRoomCache(room_id);
+        }
+    }
+};
+
+// 清空房间的所有缓存
+const clearRoomCache = (room_id) => {
+    // 获取所有缓存的键
+    const keys = chatCache.keys();
+
+    // 筛选出与该房间相关的键并删除
+    keys.forEach(key => {
+        if (key.startsWith(`chat_${room_id}_`) || key === `room_msg_count_${room_id}`) {
+            chatCache.del(key);
+        }
+    });
+
+    // console.log(`已清空房间 ${room_id} 的缓存`);
+};
 
 
 // 上传群头像
@@ -618,7 +797,7 @@ router.post('/uploadGroupAvatar', koaJwt({ secret }), koaBody({
 
     if (!file) {
         ctx.status = 400;
-        ctx.body = { message: '未上传文件' };
+        ctx.body = { message: '未上传文件', code: 400 };
         return;
     }
 
@@ -630,11 +809,11 @@ router.post('/uploadGroupAvatar', koaJwt({ secret }), koaBody({
         // 删除不符合格式的文件
         fs.unlinkSync(path.join(__dirname, '../public/avatar/group') + '/' + file.newFilename);
         ctx.status = 400;
-        ctx.body = { message: '不支持的文件格式，仅支持 .jpg, .jpeg, .png, .gif, .webp, .bmp' };
+        ctx.body = { message: '不支持的文件格式，仅支持 .jpg, .jpeg, .png, .gif, .webp, .bmp', code: 400 };
         return;
     }
 
-    ctx.body = { message: '上传成功', data: file };
+    ctx.body = { message: '上传成功', data: file, code: 200 };
 });
 
 
@@ -648,7 +827,7 @@ router.post('/searchRoom', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, keyword });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -674,7 +853,7 @@ router.post('/searchRoom', koaJwt({ secret }), async (ctx) => {
             // 仅返回rooms字段
             attributes: ['rooms','id'],
         });
-        console.log(userRooms);
+        // console.log(userRooms);
 
         // 标记用户已加入的房间
         for (let i = 0; i < getRooms.length; i++) {
@@ -687,11 +866,11 @@ router.post('/searchRoom', koaJwt({ secret }), async (ctx) => {
             }
         }
 
-        ctx.body = { message: '搜索房间成功', data: getRooms};
+        ctx.body = { message: '搜索房间成功', data: getRooms, code: 200};
     } catch (error) {
         ctx.status = 500;
         console.log(error);
-        ctx.body = { message: error };
+        ctx.body = { message: error, code: 500 };
     }
 })
 
@@ -706,7 +885,7 @@ router.post('/joinRoom', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -715,7 +894,7 @@ router.post('/joinRoom', koaJwt({ secret }), async (ctx) => {
         const user = await User.findOne({ where: { user_id } });
         if (!user) {
             ctx.status = 400;
-            ctx.body = { message: '用户不存在' };
+            ctx.body = { message: '用户不存在', code: 400 };
             return;
         }
 
@@ -723,7 +902,7 @@ router.post('/joinRoom', koaJwt({ secret }), async (ctx) => {
         const isInRooms = user.rooms.some(r => r.room_id === room_id);
         if (isInRooms) {
             ctx.status = 400;
-            ctx.body = { message: '用户已经在房间中' };
+            ctx.body = { message: '用户已经在房间中', code: 400 };
             return;
         }
 
@@ -734,16 +913,16 @@ router.post('/joinRoom', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 判断房间的users字段里有没有user_id
         const isInUsers = room.users.some(u => u === user_id);
-        console.log(isInUsers);
+        // console.log(isInUsers);
         if (isInUsers) {
             ctx.status = 400;
-            ctx.body = { message: 'rooms已加入房间' };
+            ctx.body = { message: 'rooms已加入房间', code: 400 };
             return;
         }
 
@@ -764,11 +943,11 @@ router.post('/joinRoom', koaJwt({ secret }), async (ctx) => {
             users: [...room.users, user_id]
         });
 
-        ctx.body = { rooms: user.rooms, message: '加入房间成功' };
+        ctx.body = { rooms: user.rooms, message: '加入房间成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 
@@ -783,7 +962,7 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -792,7 +971,7 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
         const user = await User.findOne({ where: { user_id } });
         if (!user) {
             ctx.status = 400;
-            ctx.body = { message: '用户不存在' };
+            ctx.body = { message: '用户不存在', code: 400 };
             return;
         }
 
@@ -800,7 +979,7 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
         const isInRooms = user.rooms.some(r => r.room_id === room_id);
         if (!isInRooms) {
             ctx.status = 400;
-            ctx.body = { message: 'user不在房间中' };
+            ctx.body = { message: 'user不在房间中', code: 400 };
             return;
         }
 
@@ -809,7 +988,7 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
         const room = await Room.findOne({ where: { room_id } });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
@@ -817,7 +996,7 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
         const isInUsers = room.users.some(u => u === user_id);
         if (!isInUsers) {
             ctx.status = 400;
-            ctx.body = { message: 'rooms不在房间中' };
+            ctx.body = { message: 'rooms不在房间中', code: 400 };
             return;
         }
 
@@ -831,11 +1010,11 @@ router.post('/quitRoom', koaJwt({ secret }), async (ctx) => {
             users: room.users.filter(u => u !== user_id)
         });
 
-        ctx.body = { rooms: user.rooms, message: '退出房间成功' };
+        ctx.body = { rooms: user.rooms, message: '退出房间成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 
@@ -849,7 +1028,7 @@ router.post('/getRoomUsers', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -868,7 +1047,7 @@ router.post('/getRoomUsers', koaJwt({ secret }), async (ctx) => {
          });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
@@ -898,7 +1077,7 @@ router.post('/getRoomUsers', koaJwt({ secret }), async (ctx) => {
             // 查询用户总数
             const userCount = await User.count();
 
-            ctx.body = { data: { online: users, offline: userCount - online.length }, message: '获取房间用户成功' };
+            ctx.body = { data: { online: users, offline: userCount - online.length }, message: '获取房间用户成功', code: 200 };
             return;
         }
 
@@ -929,11 +1108,11 @@ router.post('/getRoomUsers', koaJwt({ secret }), async (ctx) => {
             delete user.dataValues.user_id;
         }
 
-        ctx.body = { data: { online, offline }, message: '获取房间用户成功' };
+        ctx.body = { data: { online, offline }, message: '获取房间用户成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 
@@ -947,7 +1126,7 @@ router.get('/easyGetRoomUsers', async (ctx) => {
     const { error } = schema.validate({ room_id});
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -956,11 +1135,11 @@ router.get('/easyGetRoomUsers', async (ctx) => {
         const usersOnlineFile = path.join(__dirname, '../public/data/users.json');
         const onlineUsers = JSON.parse(fs.readFileSync(usersOnlineFile, 'utf-8'));
 
-        ctx.body = { data: { onlineUsers: Object.keys(onlineUsers).length }, message: '获取房间用户成功' };
+        ctx.body = { data: { onlineUsers: Object.keys(onlineUsers).length }, message: '获取房间用户成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 
@@ -975,29 +1154,37 @@ router.get('/easyGetPublicRoomChatRecords', async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
-        // 查询房间里的聊天记录
-        const chatRecords = await ChatRecord.findAll({
-            where: {
-                room_id: '666666',
-                status: 1,
-            },
-            attributes: ['msg_id', 'room_id', 'username', 'nickname', 'interact', 'json_msg', 'ymsg','msg', 'type','status','source', 'createdAt'],
-            order: [
-                ['createdAt', 'DESC'],
-            ],
-            limit: 100,
-        });
+        // 先从缓存中获取聊天记录
+        let chatRecords = getChatRecordsFromCache("666666", 1, 100);
+                
+        // 如果缓存中没有数据，则从数据库中查询
+        if (!chatRecords) {
+            chatRecords = await ChatRecord.findAll({
+                where: {
+                    room_id: '666666',
+                    status: 1,
+                },
+                attributes: ['msg_id', 'room_id', 'username', 'nickname', 'interact', 'json_msg', 'ymsg','msg', 'type','status','source', 'createdAt'],
+                order: [
+                    ['createdAt', 'DESC'],
+                ],
+                limit: 100,
+            });
+            
+            // 将查询结果存入缓存
+            setChatRecordsToCache("666666", 1, 100, chatRecords);
+        }
 
-        ctx.body = { chatRecords, message: '获取房间聊天记录成功' };
-    } catch (err) {
-        console.log(err);
-        ctx.status = 500;
-        ctx.body = { message: err };
-    }
+            ctx.body = { chatRecords, message: '获取房间聊天记录成功', code: 200 };
+        } catch (err) {
+            console.log(err);
+            ctx.status = 500;
+            ctx.body = { message: err, code: 500 };
+        }
 })
 
 // 无需jwt查询房间信息
@@ -1009,7 +1196,7 @@ router.get('/easyGetRoomInfo', async (ctx) => {
     const { error } = schema.validate({ room_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1022,7 +1209,7 @@ router.get('/easyGetRoomInfo', async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
@@ -1032,11 +1219,11 @@ router.get('/easyGetRoomInfo', async (ctx) => {
             desc: room.desc,
             avatar: room.avatar,
             users: room.users.length,
-        }, message: '获取房间信息成功' };
+        }, message: '获取房间信息成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1051,7 +1238,7 @@ router.post('/getEmojiCategory', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1066,11 +1253,11 @@ router.post('/getEmojiCategory', koaJwt({ secret }), async (ctx) => {
         });
         
 
-        ctx.body = { emoticons, message: '获取表情包分类成功' };
+        ctx.body = { data:emoticons, message: '获取表情包分类成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1085,7 +1272,7 @@ router.post('/getEmoji', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, category_name });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1099,11 +1286,11 @@ router.post('/getEmoji', koaJwt({ secret }), async (ctx) => {
             ],
         });
 
-        ctx.body = { emoticons, message: '获取表情包成功' };
+        ctx.body = { data: emoticons, message: '获取表情包成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1120,11 +1307,11 @@ router.post('/getInteractEmoticons', koaJwt({ secret }), async (ctx) => {
             ],
         });
 
-        ctx.body = { data: emoticons , message: '获取互动表情包成功' };
+        ctx.body = { data: emoticons , message: '获取互动表情包成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1139,7 +1326,7 @@ router.post('/addAppToRoom', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, app_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1152,14 +1339,14 @@ router.post('/addAppToRoom', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 是否是群主
         if (room.owner_id !== ctx.state.user.user_id) {
             ctx.status = 400;
-            ctx.body = { message: '不是群主' };
+            ctx.body = { message: '不是群主', code: 400 };
             return;
         }
 
@@ -1167,7 +1354,7 @@ router.post('/addAppToRoom', koaJwt({ secret }), async (ctx) => {
         const hasApp = room.apps.some(a => a.app_id === app_id);
         if (hasApp) {
             ctx.status = 400;
-            ctx.body = { message: '该应用已添加到房间' };
+            ctx.body = { message: '该应用已添加到房间', code: 400 };
             return;
         }
 
@@ -1182,11 +1369,11 @@ router.post('/addAppToRoom', koaJwt({ secret }), async (ctx) => {
             }]
         });
 
-        ctx.body = { data: '添加应用到房间成功' };
+        ctx.body = { data: '添加应用到房间成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1200,20 +1387,20 @@ router.post('/getRoomApps', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
     try {
         // 查询房间
-        const room = await Room.findOne({ 
+        const room = await Room.findOne({
             where: { room_id },
             // 筛选字段
             attributes: ['apps', 'room_id'],
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
@@ -1252,11 +1439,11 @@ router.post('/getRoomApps', koaJwt({ secret }), async (ctx) => {
         });
 
 
-        ctx.body = { data: appsData, message: '获取房间内的应用成功' };
+        ctx.body = { data: appsData, message: '获取房间内的应用成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1269,7 +1456,7 @@ router.post('/getRoomFiles', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1281,7 +1468,7 @@ router.post('/getRoomFiles', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
@@ -1297,11 +1484,11 @@ router.post('/getRoomFiles', koaJwt({ secret }), async (ctx) => {
             ],
         })
 
-        ctx.body = { data: filesData, message: '获取房间内文件成功' };
+        ctx.body = { data: filesData, message: '获取房间内文件成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1318,7 +1505,7 @@ router.post('/chatRecordInteract', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ msg_id, username, url, emoticon_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1355,11 +1542,11 @@ router.post('/chatRecordInteract', koaJwt({ secret }), async (ctx) => {
             }
         });
 
-        ctx.body = { data: { msg_id, username, url, emoticon_id } };
+        ctx.body = { data: { msg_id, username, url, emoticon_id }, message: '聊天记录互动成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1374,7 +1561,7 @@ router.post('/checkOwner', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, user_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1388,20 +1575,20 @@ router.post('/checkOwner', koaJwt({ secret }), async (ctx) => {
         );
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 判断是否是群主
         if (room.owner_id === user_id) {
-            ctx.body = { data: true };
+            ctx.body = { data: true, code: 200 };
         } else {
-            ctx.body = { data: false };
+            ctx.body = { data: false, code: 200 };
         }
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1419,7 +1606,7 @@ router.post('/chatRecordReport', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ msg_id, reason, user_id, username, content });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1448,11 +1635,11 @@ router.post('/chatRecordReport', koaJwt({ secret }), async (ctx) => {
         }
         const returnData = await chatReport.create(chatReportData)
 
-        ctx.body = { message: '举报成功', data: returnData };
+        ctx.body = { message: '举报成功', data: returnData, code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1466,7 +1653,7 @@ router.post('/getAnnouncementList', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1478,17 +1665,17 @@ router.post('/getAnnouncementList', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 过滤掉已删除的公告
         const announcementList = room.announcement.filter(a => a.status !== 0);
-        ctx.body = { data: announcementList, message: '获取房间公告成功' };
+        ctx.body = { data: announcementList, message: '获取房间公告成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1502,7 +1689,7 @@ router.post('/writeAnnouncement', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, content });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1514,14 +1701,14 @@ router.post('/writeAnnouncement', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 判断是否是群主
         if (room.owner_id !== ctx.state.user.user_id) {
             ctx.status = 400;
-            ctx.body = { message: '不是群主' };
+            ctx.body = { message: '不是群主', code: 400 };
             return;
         }
 
@@ -1541,11 +1728,11 @@ router.post('/writeAnnouncement', koaJwt({ secret }), async (ctx) => {
             },
         });
 
-        ctx.body = { data: room.announcement, message: '写入公告成功' };
+        ctx.body = { data: room.announcement, message: '写入公告成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1560,7 +1747,7 @@ router.post('/deleteAnnouncement', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ announcement_id, room_id });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1574,13 +1761,13 @@ router.post('/deleteAnnouncement', koaJwt({ secret }), async (ctx) => {
         });
         if (!announcement) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
         // 判断是否是群主
         if (announcement.owner_id !== ctx.state.user.user_id) {
             ctx.status = 400;
-            ctx.body = { message: '不是群主' };
+            ctx.body = { message: '不是群主', code: 400 };
             return;
         }
 
@@ -1594,13 +1781,11 @@ router.post('/deleteAnnouncement', koaJwt({ secret }), async (ctx) => {
             },
         });
 
-
-
-        ctx.body = { message: '删除公告成功' };
+        ctx.body = { message: '删除公告成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -1619,7 +1804,7 @@ router.post('/modifyRoomInfo', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ room_id, avatar, user_id, username, name, desc });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -1632,14 +1817,14 @@ router.post('/modifyRoomInfo', koaJwt({ secret }), async (ctx) => {
         });
         if (!room) {
             ctx.status = 400;
-            ctx.body = { message: '房间不存在' };
+            ctx.body = { message: '房间不存在', code: 400 };
             return;
         }
 
         // 判断是否是群主
         if (room.owner_id !== ctx.state.user.user_id) {
             ctx.status = 400;
-            ctx.body = { message: '不是群主' };
+            ctx.body = { message: '不是群主', code: 400 };
             return;
         }
 
@@ -1654,11 +1839,11 @@ router.post('/modifyRoomInfo', koaJwt({ secret }), async (ctx) => {
             },
         });
 
-        ctx.body = { data: { room_id, avatar, name, desc }, message: '修改房间信息成功' };
+        ctx.body = { data: { room_id, avatar, name, desc }, message: '修改房间信息成功', code: 200 };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 

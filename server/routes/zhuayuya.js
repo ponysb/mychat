@@ -21,7 +21,7 @@ router.post('/user', async (ctx) => {
     const { error } = schema.validate(ctx.request.body);
     if (error) {
         ctx.status = 400;
-        ctx.body = { error: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return
     }
 
@@ -36,7 +36,7 @@ router.post('/user', async (ctx) => {
     
         if (res.data.code != 200) {
             ctx.status = 400;
-            ctx.body = { error: "用户不存在" };
+            ctx.body = { message: "用户不存在", code: 400 };
             return;
         }
 
@@ -74,11 +74,11 @@ router.post('/user', async (ctx) => {
                 await Room.update({ users: users }, { where: { room_id: '666666' } });
 
                 ctx.status = 200;
-                ctx.body = { msg: "用户存在已加入用户",data: { nickname: res.data.data.nickname, email: res.data.data.email } };
+                ctx.body = { message: "用户存在已加入用户",data: { nickname: res.data.data.nickname, email: res.data.data.email }, code: 200 };
                 return;
             }else{
                 ctx.status = 200;
-                ctx.body = { msg: "用户存在",data: {nickname: isUser.nickname, email: isUser.email} };
+                ctx.body = { message: "用户存在",data: {nickname: isUser.nickname, email: isUser.email}, code: 200 };
                 return;
             }
 
@@ -86,7 +86,7 @@ router.post('/user', async (ctx) => {
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { error: "服务器错误" };
+        ctx.body = { message: "服务器错误", code: 500 };
         return;
     }
 
@@ -105,7 +105,7 @@ router.post('/nickname', async (ctx) => {
     const { error } = schema.validate(ctx.request.body);
     if (error) {
         ctx.status = 400;
-        ctx.body = { error: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return
     }
 
@@ -120,13 +120,13 @@ router.post('/nickname', async (ctx) => {
     
         if (res.data.code != 200) {
             ctx.status = 400;
-            ctx.body = { error: "用户不存在" };
+            ctx.body = { message: "用户不存在", code: 400 };
             return;
         }
     } catch (err) {
         console.log(err);
         ctx.status = 500;
-        ctx.body = { error: "服务器错误" };
+        ctx.body = { message: "服务器错误", code: 500 };
         return;
     }
 
@@ -134,7 +134,7 @@ router.post('/nickname', async (ctx) => {
     let data = await wordFilter(ctx.request.body.nickname);
     if(data.words.length != 0){
         ctx.status = 400;
-        ctx.body = { error: '昵称过于敏感了哦~' };
+        ctx.body = { message: '昵称过于敏感了哦~', code: 400 };
         return;
     }
 
@@ -154,14 +154,14 @@ router.post('/nickname', async (ctx) => {
 
     if (!result || !chat_result) {
         ctx.status = 400;
-        ctx.body = { error: "修改失败" };
+        ctx.body = { message: "修改失败", code: 400 };
         return
     }
 
 
     ctx.body = {
         code: 200,
-        msg: '修改成功',
+        message: '修改成功',
         data: result
     }
 });

@@ -12,7 +12,7 @@ const sha256 = require("crypto-js/sha256");
 const axios = require('axios');
 const koaBody = require('koa-body').default;
 const nanoidNode = '1234567890abcdefghijklmnopqrstuvwxyz';
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 
 // 注册
 router.post('/register', async (ctx) => {
@@ -25,14 +25,14 @@ router.post('/register', async (ctx) => {
     const { error } = schema.validate({ username, password });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
     // 先检查用户名是否存在
     const user = await User.findOne({ where: { username } });
     if (user) {
       ctx.status = 400;
-      ctx.body = { message: '用户名已存在' };
+      ctx.body = { message: '用户名已存在', code: 400 };
       return;
     }
     try {
@@ -56,10 +56,10 @@ router.post('/register', async (ctx) => {
         let users = room_users.users;
         users.push(user_id);
         await Room.update({ users: users }, { where: { room_id: '666666' } });
-        ctx.body = { message: '注册成功', user: user };
+        ctx.body = { message: '注册成功', user: user, code: 200 };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 
@@ -77,22 +77,30 @@ router.post('/login', async (ctx) => {
     const { error } = schema.validate(ctx.request.body);
     if (error) {
         ctx.status = 400;
-        ctx.body = { error: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return
     }
 
     try{
         // 校验验证码
-        const res = await axios.post('https://account.roots.zyy.muo.cc/', {
-            "ac": "email_code_login_verify",
-            "user": email,
-            "code": code,
-        });
+        const res = await axios.post('https://api.zyy.muo.cc/account/user/code_login', JSON.stringify({
+            "email": email,
+            "code": code
+        }),
+        {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        }
+    
+    );
+
+        console.log(res.data)
     
         // 验证码正确
-        if (res.data.code === 200) {
+        if (res.data.code === 0) {
             // 查询user库用户在不在
-            const user = await User.findOne({ where: { username:res.data.data.uid } });
+            const user = await User.findOne({ where: { username: res.data.data.uid.toString() } });
             if (!user) {
                 // 注册
                 let user_id = 'uid_' + customAlphabet(nanoidNode, 10)();
@@ -139,7 +147,7 @@ router.post('/login', async (ctx) => {
                     friends: user.friends,
                     signature: user.signature,
                     token,
-                 } };
+                 },  code: 200 };
             }
 
             if(user){
@@ -168,23 +176,24 @@ router.post('/login', async (ctx) => {
                         friends: user.friends,
                         signature: user.signature,
                         token,
-                    }
+                    },
+                    code: 200,
                 };
             }
 
         }
 
         // 验证码错误
-        if(res.data.code != 200){
+        if(res.data.code != 0){
             ctx.status = 400;
-            ctx.body = { error: "验证码错误" };
+            ctx.body = { message: "验证码错误", code: 400 };
             return;
         }
 
     } catch (err) {
         ctx.status = 500;
         console.log(err);
-        ctx.body = { error: err };
+        ctx.body = { message: err, code: 500 };
     }
 
 
@@ -193,11 +202,12 @@ router.post('/login', async (ctx) => {
 
 // 校验登录状态
 router.post('/check_login', koaJwt({ secret }), async (ctx) => {
+    // console.log(ctx.request)
     const { user_id } = ctx.request.body;
     const user = await User.findOne({ where: { user_id } });
     if (!user) {
         ctx.status = 401;
-        ctx.body = { message: '用户不存在' };
+        ctx.body = { message: '用户不存在', code: 401 };
         return;
     }
 
@@ -241,7 +251,8 @@ router.post('/check_login', koaJwt({ secret }), async (ctx) => {
             gender: user.gender,
             friends: user.friends,
             signature: user.signature,
-        }
+        },
+        code: 200,
     };
 });
 
@@ -258,7 +269,7 @@ router.post('/zhuayuya_check', async (ctx) => {
     const { error } = schema.validate({ username, nickname, email });
     if (error) {
         ctx.status = 400;
-        ctx.body = { error: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -274,7 +285,7 @@ router.post('/zhuayuya_check', async (ctx) => {
             // 用户不存在
             if (res.data.code != 200||res.data.data.activate) {
                 ctx.status = 400;
-                ctx.body = { message: '用户不存在', data: { username, nickname, email } };
+                ctx.body = { message: '用户不存在', data: { username, nickname, email }, code: 400 };
                 return;
             }
 
@@ -312,7 +323,7 @@ router.post('/zhuayuya_check', async (ctx) => {
             };
             fs.writeFileSync(tokenFile, JSON.stringify(tokenData));
 
-            ctx.body = { message: '注册成功', data: { user_id: user.user_id, token: jwt_token } };
+            ctx.body = { message: '注册成功', data: { user_id: user.user_id, token: jwt_token }, code: 200 };
 
             
         } else {
@@ -325,12 +336,12 @@ router.post('/zhuayuya_check', async (ctx) => {
                 username: username,
             };
             fs.writeFileSync(tokenFile, JSON.stringify(tokenData));
-            ctx.body = { message: '用户已存在', data: { user_id: user.user_id, token: jwt_token }  };
+            ctx.body = { message: '用户已存在', data: { user_id: user.user_id, token: jwt_token }, code: 200 };
         }
     } catch (err) {
         ctx.status = 500;
         console.log(err);
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 })
 
@@ -377,7 +388,7 @@ router.post('/uploadUserAvatar', koaJwt({ secret }), koaBody({    // 注册文�
       // 移动文件到新路径
       fs.renameSync(file.filepath, newPath);
 
-      ctx.body = { message: '上传成功', data: { newFilename } };
+      ctx.body = { message: '上传成功', data: { newFilename }, code: 200 };
     } else {
       ctx.throw(400, '没有检测到上传文件');
     }
@@ -407,7 +418,7 @@ router.post('/modifyUserInfo', koaJwt({ secret }), async (ctx) => {
     const { error } = schema.validate({ user_id, username, nickname, avatar, signature });
     if (error) {
         ctx.status = 400;
-        ctx.body = { message: error.details[0].message };
+        ctx.body = { message: error.details[0].message, code: 400 };
         return;
     }
 
@@ -415,7 +426,7 @@ router.post('/modifyUserInfo', koaJwt({ secret }), async (ctx) => {
     const user = await User.findOne({ where: { user_id } });
     if (!user) {
         ctx.status = 401;
-        ctx.body = { message: '用户不存在' };
+        ctx.body = { message: '用户不存在', code: 401 };
         return;
     }
     try {
@@ -436,10 +447,10 @@ router.post('/modifyUserInfo', koaJwt({ secret }), async (ctx) => {
             avatar,
             signature,
         });
-        ctx.body = { data: { nickname, avatar, signature }, message: '修改成功' };
+        ctx.body = { data: { nickname, avatar, signature }, message: '修改成功', code: 200 };
     } catch (err) {
         ctx.status = 500;
-        ctx.body = { message: err };
+        ctx.body = { message: err, code: 500 };
     }
 });
 

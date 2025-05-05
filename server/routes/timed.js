@@ -9,7 +9,7 @@ const path = require('path');
 const dayjs = require('dayjs');
 
 const router = new Router();
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 
 
 // 每天1点执行一次任务
@@ -102,7 +102,7 @@ router.get('/dashboard', koaJwt({ secret }), async (ctx) => {
 
     // 返回
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取仪表盘数据成功',
         data: {
             userCount,  // 全部用户数量
@@ -139,7 +139,7 @@ router.get('/dashboardChart', koaJwt({ secret }), async (ctx) => {
 
     // 返回
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取仪表盘柱状图数据成功',
         data: dauData,
  
@@ -162,7 +162,7 @@ router.get('/new', koaJwt({ secret }), async (ctx) => {
     });
 
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取最近三天新增的房间成功',
         data: {
             newRooms,
@@ -178,7 +178,7 @@ router.get('/chatRecordCount', koaJwt({ secret }), async (ctx) => {
     });
 
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取聊天记录各个类型数量成功',
         data: chatRecordCount,
     };
@@ -192,7 +192,7 @@ router.get('/shareholder', koaJwt({ secret }), async (ctx) => {
 
     // 返回
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取股东数据成功',
         data: {
             vip: badgeData.vip,
@@ -238,7 +238,7 @@ router.post('/getSignData', koaJwt({ secret }), async (ctx) => {
     }
 
     ctx.body = {
-        code: 2,
+        code: 200,
         message: '今天已经签到',
         data: {
             // 今日
@@ -262,8 +262,9 @@ router.post('/moyuData', koaJwt({ secret }), async (ctx) => {
         });
 
         if (!user) {
+            ctx.status = 500;
             ctx.body = {
-                code: 1,
+                code: 500,
                 message: '用户不存在',
             };
             return;
@@ -353,13 +354,14 @@ router.post('/moyuData', koaJwt({ secret }), async (ctx) => {
 
 
         ctx.body = {
-            code: 0,
+            code: 200,
             message: '摸鱼数据提交成功',
         };
     } catch (error) {
         console.error('Error submitting moyu data:', error);
+        ctx.status = 500;
         ctx.body = {
-            code: -1,
+            code: 500,
             message: '服务器错误',
         };
     }
@@ -380,7 +382,6 @@ router.post('/getBadgeData', koaJwt({ secret }), async (ctx) => {
         });
 
         if (!badge) {
-            ctx.status = 200;
             ctx.body = {
                 code: 200,
                 data: {
@@ -397,7 +398,7 @@ router.post('/getBadgeData', koaJwt({ secret }), async (ctx) => {
 
 
         ctx.body = {
-            code: 0,
+            code: 200,
             message: '获取徽章数据成功',
             data: {
                 fish_catch: badge.fish_catch,  // 鱼数量
@@ -410,8 +411,9 @@ router.post('/getBadgeData', koaJwt({ secret }), async (ctx) => {
         };
     } catch (error) {
         console.error('Error getting badge data:', error);
+        ctx.status = 500;
         ctx.body = {
-            code: -1,
+            code: 500,
             message: '服务器错误',
         };
     }
@@ -462,14 +464,15 @@ router.post('/getBadgeRank', koaJwt({ secret }), async (ctx) => {
         
 
         ctx.body = {
-            code: 0,
+            code: 200,
             message: '获取徽章排行榜成功',
             data: badges,
         };
     } catch (error) {
         console.error('Error getting badge rank:', error);
+        ctx.status = 500;
         ctx.body = {
-            code: -1,
+            code: 500,
             message: '服务器错误',
         };
     }
@@ -481,7 +484,7 @@ router.post('/getShareholderList', koaJwt({ secret }), async (ctx) => {
     const shareholderData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/stockholder.json'), 'utf-8'));
 
     ctx.body = {
-        code: 0,
+        code: 200,
         message: '获取股东列表成功',
         data: shareholderData,
     };

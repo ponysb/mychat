@@ -1,4 +1,4 @@
-const { User, Room, chatOrder,chatReport, Feedback, ChatRecord, AdminUser, chatAppComment, chatEmoticon, chatApp } = require('../models/models');
+const { User, Room, AppTag, chatOrder,chatReport, Feedback, ChatRecord, AdminUser, chatAppComment, chatEmoticon, chatApp } = require('../models/models');
 const { Op, Sequelize, where } = require('sequelize');
 const Router = require('koa-router');
 const Joi = require('joi');
@@ -14,7 +14,7 @@ const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone"); // dependent on utc plugin
 
 const router = new Router();
-const secret = '@5.0.0node_mdex.js:109:16';
+const secret = '@5.0.0node_modules@koacorsindex.js:109:16';
 const nanoidNode = '1234567890abcdefghijklmnopqrstuvwxyz';
 
 // 登录
@@ -37,6 +37,7 @@ router.post('/login', async (ctx) => {
             where: {
                 username,
                 password,
+                status: 1,
             },
         });
     
@@ -96,11 +97,206 @@ router.post('/register', async (ctx) => {
     }
 });
 
+
+// 标签管理请求所有标签
+router.get('/appTags', async (ctx) => {
+    try {
+        // 构建查询条件
+        const where = {};
+        if (ctx.query.tag_name) {
+            where.tag_name = { [Op.like]: `%${ctx.query.tag_name}%` };
+        }
+        if (ctx.query.status) {
+            where.status = { [Op.eq]: ctx.query.status };
+        }
+
+        const appTags = await AppTag.findAll(
+            {
+                where,
+                order: [['app_num', 'DESC']], // 按 app_num 字段升序排列
+            }
+        );
+        ctx.body = { data: appTags, message: '获取成功', code: 200  };
+    } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误', code: 500  };
+    }
+});
+
+// 编辑标签
+router.post('/editAppTag', koaJwt({ secret }), async (ctx) => {
+    const { id, status } = ctx.request.body;
+    const schema = Joi.object({
+        id: Joi.number().required(),
+        status: Joi.number().required(),
+    });
+
+    const { error } = schema.validate({ id, status });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message };
+        return;
+    }
+
+    try {
+        const appTag = await AppTag.findOne({
+            where: {
+                id,
+            },
+        });
+        if (!appTag) {
+            ctx.status = 400;
+            ctx.body = { message: '应用标签不存在' };
+            return;
+        }
+        await appTag.update({
+            status,
+        });
+        ctx.body = { message: '编辑成功', code: 200   };
+    } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误' };
+    }
+});
+
+// 添加标签
+router.post('/addAppTag', koaJwt({ secret }), async (ctx) => {
+    const { tag_name } = ctx.request.body;
+    const schema = Joi.object({
+        tag_name: Joi.string().required(),
+    });
+
+    const { error } = schema.validate({ tag_name });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message, code: 400 };
+        return;
+    }
+
+    try {
+        const appTag = await AppTag.findOne({
+            where: {
+                tag_name,
+            },
+        });
+        if (appTag) {
+            ctx.status = 400;
+            ctx.body = { message: '应用标签已存在', code: 400 };
+            return;
+        }
+        await AppTag.create({
+            tag_name,
+            app_num: 0,
+            status: 1,
+            tag_color:'',
+            tag_icon:'',
+            other: []
+        });
+        ctx.body = { message: '添加成功', code: 200 };
+    } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误', code: 500  };
+    }
+});
+
+// 获取应用标签
+router.get('/getChatAppTag', async (ctx) => {
+    try {
+        const appTagList = await AppTag.findAll({
+            where: { status: 1 },
+            order: [['app_num', 'DESC']], // 按 app_num 字段升序排列
+        });
+        ctx.body = {
+            code: 200,
+            message: '获取应用标签成功',
+            data: appTagList,
+        };
+    } catch (err) {
+        ctx.status = 500;
+        ctx.body = { message: '服务器错误', error: err.message, code: 500 };
+    }
+});
+
 // 获取用户列表
 router.get('/users', koaJwt({ secret }), async (ctx) => {
     try {
         const users = await AdminUser.findAll();
         ctx.body = { data: users, message: '获取成功' };
+    } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误' };
+    }
+});
+
+// 标签应用数量+1
+router.post('/addAppTagNum', koaJwt({ secret }), async (ctx) => {
+    const { tag } = ctx.request.body;
+    const schema = Joi.object({
+        tag: Joi.string().required(),
+    });
+
+    const { error } = schema.validate({ tag });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message };
+        return;
+    }
+
+    try {
+        const appTag = await AppTag.findOne({
+            where: {
+                tag_name: tag,
+            },
+        });
+        if (!appTag) {
+            ctx.status = 400;
+            ctx.body = { message: '应用标签不存在' };
+            return;
+        }
+        await appTag.update({
+            app_num: appTag.app_num + 1,
+        });
+        ctx.body = { message: '标签应用数量+1成功' };
+    } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误' };
+    }
+});
+
+// 标签应用数量-1
+router.post('/reduceAppTagNum', koaJwt({ secret }), async (ctx) => {
+    const { tag } = ctx.request.body;
+    const schema = Joi.object({
+        tag: Joi.string().required(),
+    });
+
+    const { error } = schema.validate({ tag });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message };
+        return;
+    }
+
+    try {
+        const appTag = await AppTag.findOne({
+            where: {
+                tag_name: tag,
+            },
+        });
+        if (!appTag) {
+            ctx.status = 400;
+            ctx.body = { message: '应用标签不存在' };
+            return;
+        }
+        await appTag.update({
+            app_num: appTag.app_num - 1,
+        });
+        ctx.body = { message: '标签应用数量-1成功' };
     } catch (err) {
         console.log(err);
         ctx.status = 500;
@@ -347,6 +543,50 @@ router.post('/rooms', koaJwt({ secret }), async (ctx) => {
 });
 
 
+// 获取聊天记录
+router.post('/getRecords', koaJwt({ secret }), async (ctx) => {
+    const { room_id, limit, offset } = ctx.request.body;
+    const schema = Joi.object({
+        room_id: Joi.string().required(),
+        limit: Joi.number().required(),
+        offset: Joi.number().required(),
+    });
+
+    const { error } = schema.validate({ room_id, limit, offset });
+    if (error) {
+        ctx.status = 400;
+        ctx.body = { message: error.details[0].message, code: 400 };
+        return;
+        }
+
+    try {
+        const records = await ChatRecord.findAll({
+            where: {
+                room_id,
+            },
+            limit,
+            offset,
+            order: [['createdAt', 'DESC']],
+        });
+
+        const totalCount = await ChatRecord.count({
+            where: {
+                room_id,
+            },
+        });
+        
+        ctx.body = { data: {records, totalCount}, message: '获取成功', code: 200 };
+
+        } catch (err) {
+        console.log(err);
+        ctx.status = 500;
+        ctx.body = { error: err, message: '服务器错误', code: 500 };
+    }
+});
+
+
+
+
 // 修改房间信息
 router.post('/editRoom', koaJwt({ secret }), async (ctx) => {
     const { room_id, name, desc, status } = ctx.request.body;
@@ -499,7 +739,7 @@ router.post('/users', koaJwt({ secret }), async (ctx) => {
         searchConditions.phone = { [Op.like]: `%${phone}%` };
     }
     if (createdAt&&createdAt.length > 0) {
-        console.log(createdAt);
+        // console.log(createdAt);
         searchConditions.createdAt = { [Op.between]: [new Date(createdAt[0]), new Date(createdAt[1])] };
     }
 
